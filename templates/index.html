@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>On-Device 영상 분석</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f1117;
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 1.6rem;
+      margin-bottom: 20px;
+      color: #7eb8f7;
+    }
+    .card {
+      background: #1a1d27;
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 16px;
+      border: 1px solid #2a2d3e;
+    }
+    .row { display: flex; gap: 12px; align-items: stretch; }
+    input[type=text] {
+      flex: 1;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid #3a3d50;
+      background: #0f1117;
+      color: #e0e0e0;
+      font-size: 1rem;
+    }
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 600;
+      transition: opacity 0.2s;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: #4c8ef5; color: #fff; }
+    .btn-danger  { background: #e05a5a; color: #fff; }
+    .btn-success { background: #4caf7d; color: #fff; }
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) { .main-grid { grid-template-columns: 1fr; } }
+    video { width: 100%; border-radius: 8px; background: #000; }
+    .section-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: #9db8e8;
+    }
+    .model-status {
+      font-size: 0.85rem;
+      padding: 6px 12px;
+      border-radius: 6px;
+      display: inline-block;
+      margin-bottom: 10px;
+    }
+    .status-idle    { background: #2a2d3e; color: #888; }
+    .status-loading { background: #3a3000; color: #ffc107; }
+    .status-ready   { background: #0d3a1f; color: #4caf7d; }
+    .status-error   { background: #3a0d0d; color: #e05a5a; }
+    textarea.prompt-box {
+      width: 100%;
+      height: 80px;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #3a3d50;
+      background: #0f1117;
+      color: #e0e0e0;
+      font-size: 0.9rem;
+      resize: vertical;
+      margin-bottom: 8px;
+    }
+    .params-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+      align-items: center;
+    }
+    .params-row label { font-size: 0.85rem; color: #888; }
+    .params-row input[type=number] {
+      width: 70px;
+      padding: 5px 8px;
+      border-radius: 6px;
+      border: 1px solid #3a3d50;
+      background: #0f1117;
+      color: #e0e0e0;
+    }
+    .captured-frame {
+      width: 100%;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      display: none;
+    }
+    #analysisResult {
+      background: #0f1117;
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 120px;
+      font-size: 0.92rem;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      border: 1px solid #2a2d3e;
+      max-height: 380px;
+      overflow-y: auto;
+    }
+    #log {
+      background: #0a0c12;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 0.8rem;
+      font-family: monospace;
+      max-height: 160px;
+      overflow-y: auto;
+      border: 1px solid #2a2d3e;
+      color: #888;
+    }
+    .log-ok   { color: #4caf7d; }
+    .log-warn { color: #ffc107; }
+    .log-err  { color: #e05a5a; }
+    canvas { display: none; }
+    .progress-bar-wrap {
+      height: 6px;
+      background: #2a2d3e;
+      border-radius: 3px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      background: #4c8ef5;
+      border-radius: 3px;
+      transition: width 0.3s;
+      width: 0%;
+    }
+  </style>
+</head>
+<body>
+<h1>On-Device 영상 분석 (Qwen3.5 Vision 0.8B)</h1>
+
+<!-- 모델 로드 -->
+<div class="card">
+  <div class="section-title">1. AI 모델 로드 (WebGPU)</div>
+  <div id="modelStatus" class="model-status status-idle">모델 미로드</div>
+  <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+  <button class="btn-primary" id="loadModelBtn" onclick="loadModel()">모델 로드 (~500MB)</button>
+</div>
+
+<!-- YouTube 다운로드 -->
+<div class="card">
+  <div class="section-title">2. YouTube 영상 다운로드</div>
+  <div class="row">
+    <input type="text" id="ytUrl" placeholder="YouTube URL 입력 (예: https://www.youtube.com/watch?v=...)" />
+    <button class="btn-primary" id="downloadBtn" onclick="downloadVideo()">다운로드</button>
+  </div>
+  <div id="downloadStatus" style="margin-top:8px;font-size:0.85rem;color:#888;"></div>
+</div>
+
+<!-- 영상 플레이어 + 분석 -->
+<div class="main-grid">
+  <div class="card">
+    <div class="section-title">영상 플레이어</div>
+    <video id="videoPlayer" controls></video>
+    <canvas id="captureCanvas"></canvas>
+    <div style="margin-top:10px;">
+      <button class="btn-danger" id="analyzeBtn" onclick="analyzeFrame()" disabled>화면 분석</button>
+      <span style="font-size:0.8rem;color:#888;margin-left:10px;">영상 일시정지 후 클릭</span>
+    </div>
+    <div id="log" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">분석 결과</div>
+    <div class="section-title" style="font-size:0.85rem;color:#666;margin-bottom:6px;">분석 프롬프트</div>
+    <textarea class="prompt-box" id="promptBox">이 이미지를 자세히 분석해서 한국어로 설명해 주세요. 화면에 보이는 모든 요소, 텍스트, 사람, 물체, 배경, 분위기 등을 상세하게 묘사해 주세요.</textarea>
+    <div class="params-row">
+      <label>Max Tokens</label>
+      <input type="number" id="maxTokens" value="512" min="64" max="2048" />
+      <label>Temperature</label>
+      <input type="number" id="temperature" value="0" min="0" max="1" step="0.1" />
+      <label>이미지 크기</label>
+      <select id="imgSize" style="padding:5px 8px;border-radius:6px;border:1px solid #3a3d50;background:#0f1117;color:#e0e0e0;">
+        <option value="224">224px</option>
+        <option value="336">336px</option>
+        <option value="448" selected>448px</option>
+      </select>
+    </div>
+    <img id="capturedPreview" class="captured-frame" alt="캡처된 프레임" />
+    <div id="analysisResult">분석 결과가 여기에 표시됩니다.</div>
+  </div>
+</div>
+
+<script type="module">
+  import { pipeline, RawImage } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.6.0/dist/transformers.min.js';
+
+  let vlmPipeline = null;
+  let isModelLoaded = false;
+
+  window.loadModel = async function() {
+    const btn = document.getElementById('loadModelBtn');
+    const status = document.getElementById('modelStatus');
+    const bar = document.getElementById('progressBar');
+
+    btn.disabled = true;
+    status.className = 'model-status status-loading';
+    status.textContent = '모델 로딩 중... (처음에는 ~500MB 다운로드)';
+
+    addLog('모델 로딩 시작: onnx-community/Qwen3.5-0.8B-ONNX', 'ok');
+
+    try {
+      vlmPipeline = await pipeline(
+        'image-text-to-text',
+        'onnx-community/Qwen3.5-0.8B-ONNX',
+        {
+          dtype: {
+            embed_tokens: 'q4',
+            vision_encoder: 'fp16',
+            decoder_model_merged: 'q4',
+          },
+          device: 'webgpu',
+          progress_callback: (prog) => {
+            if (prog.status === 'progress' && prog.total) {
+              const pct = Math.round((prog.loaded / prog.total) * 100);
+              bar.style.width = pct + '%';
+              status.textContent = `다운로드 중: ${prog.file} (${pct}%)`;
+            } else if (prog.status === 'done') {
+              addLog(`완료: ${prog.file}`, 'ok');
+            } else if (prog.status === 'initiate') {
+              addLog(`시작: ${prog.file}`, '');
+            }
+          }
+        }
+      );
+
+      isModelLoaded = true;
+      status.className = 'model-status status-ready';
+      status.textContent = '모델 로드 완료 (WebGPU)';
+      bar.style.width = '100%';
+      document.getElementById('analyzeBtn').disabled = false;
+      addLog('모델 준비 완료!', 'ok');
+    } catch (err) {
+      status.className = 'model-status status-error';
+      status.textContent = '모델 로드 실패: ' + err.message;
+      addLog('오류: ' + err.message, 'err');
+      btn.disabled = false;
+
+      // WebGPU 미지원 시 wasm fallback 시도
+      if (err.message.includes('WebGPU') || err.message.includes('webgpu')) {
+        addLog('WebGPU 미지원 → WASM으로 재시도...', 'warn');
+        status.textContent = 'WASM으로 재시도 중...';
+        status.className = 'model-status status-loading';
+        try {
+          vlmPipeline = await pipeline(
+            'image-text-to-text',
+            'onnx-community/Qwen3.5-0.8B-ONNX',
+            {
+              dtype: { embed_tokens: 'q4', vision_encoder: 'fp16', decoder_model_merged: 'q4' },
+              device: 'wasm',
+              progress_callback: (prog) => {
+                if (prog.status === 'progress' && prog.total) {
+                  bar.style.width = Math.round((prog.loaded / prog.total) * 100) + '%';
+                }
+              }
+            }
+          );
+          isModelLoaded = true;
+          status.className = 'model-status status-ready';
+          status.textContent = '모델 로드 완료 (WASM)';
+          document.getElementById('analyzeBtn').disabled = false;
+          addLog('WASM 모드로 모델 준비 완료', 'ok');
+        } catch (err2) {
+          status.className = 'model-status status-error';
+          status.textContent = '로드 실패: ' + err2.message;
+          addLog('WASM 오류: ' + err2.message, 'err');
+          btn.disabled = false;
+        }
+      } else {
+        btn.disabled = false;
+      }
+    }
+  };
+
+  window.downloadVideo = async function() {
+    const url = document.getElementById('ytUrl').value.trim();
+    const statusEl = document.getElementById('downloadStatus');
+    const btn = document.getElementById('downloadBtn');
+
+    if (!url) { statusEl.textContent = 'URL을 입력하세요.'; return; }
+
+    btn.disabled = true;
+    statusEl.textContent = '다운로드 중...';
+    addLog('YouTube 다운로드 시작: ' + url, '');
+
+    try {
+      const res = await fetch('/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        statusEl.textContent = '오류: ' + (data.error || '알 수 없는 오류');
+        addLog('다운로드 실패: ' + (data.error || ''), 'err');
+      } else {
+        const videoEl = document.getElementById('videoPlayer');
+        videoEl.src = '/video/' + data.filename;
+        videoEl.load();
+        statusEl.textContent = '다운로드 완료: ' + data.filename;
+        addLog('다운로드 완료: ' + data.filename, 'ok');
+      }
+    } catch (e) {
+      statusEl.textContent = '요청 실패: ' + e.message;
+      addLog('요청 실패: ' + e.message, 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  window.analyzeFrame = async function() {
+    if (!isModelLoaded) {
+      addLog('먼저 모델을 로드하세요!', 'warn');
+      return;
+    }
+
+    const videoEl = document.getElementById('videoPlayer');
+    if (!videoEl.src || videoEl.src === window.location.href) {
+      addLog('영상을 먼저 로드하세요!', 'warn');
+      return;
+    }
+
+    const btn = document.getElementById('analyzeBtn');
+    btn.disabled = true;
+    document.getElementById('analysisResult').textContent = '분석 중...';
+
+    const imgSize = parseInt(document.getElementById('imgSize').value);
+    const canvas = document.getElementById('captureCanvas');
+    canvas.width = imgSize;
+    canvas.height = imgSize;
+    const ctx = canvas.getContext('2d');
+
+    // 비디오 프레임 캡처
+    ctx.drawImage(videoEl, 0, 0, imgSize, imgSize);
+
+    // 미리보기 표시
+    const preview = document.getElementById('capturedPreview');
+    preview.src = canvas.toDataURL('image/jpeg', 0.9);
+    preview.style.display = 'block';
+
+    addLog(`프레임 캡처 완료 (${imgSize}x${imgSize})`, 'ok');
+
+    // RawImage 생성
+    const imageData = ctx.getImageData(0, 0, imgSize, imgSize);
+    const rawImage = new RawImage(imageData.data, imgSize, imgSize, 4);
+
+    const prompt = document.getElementById('promptBox').value;
+    const maxTokens = parseInt(document.getElementById('maxTokens').value);
+    const temperature = parseFloat(document.getElementById('temperature').value);
+
+    const messages = [
+      {
+        role: 'user',
+        content: [
+          { type: 'image', image: rawImage },
+          { type: 'text', text: prompt },
+        ],
+      },
+    ];
+
+    addLog(`추론 시작 (max_tokens=${maxTokens}, temp=${temperature})`, '');
+    const startTime = Date.now();
+
+    try {
+      const output = await vlmPipeline(messages, {
+        max_new_tokens: maxTokens,
+        do_sample: temperature > 0,
+        temperature: temperature > 0 ? temperature : undefined,
+      });
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const text = output[0].generated_text.at(-1).content;
+      document.getElementById('analysisResult').textContent = text;
+      addLog(`분석 완료! ${elapsed}초 소요`, 'ok');
+    } catch (e) {
+      document.getElementById('analysisResult').textContent = '분석 오류: ' + e.message;
+      addLog('추론 오류: ' + e.message, 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  function addLog(msg, type) {
+    const logEl = document.getElementById('log');
+    const span = document.createElement('div');
+    span.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    if (type === 'ok')   span.className = 'log-ok';
+    if (type === 'warn') span.className = 'log-warn';
+    if (type === 'err')  span.className = 'log-err';
+    logEl.appendChild(span);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  window.addLog = addLog;
+</script>
+</body>
+</html>
