@@ -206,10 +206,31 @@
 </div>
 
 <script type="module">
-  import { pipeline, RawImage } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.6.0/dist/transformers.min.js';
+  import {
+    AutoProcessor,
+    Qwen2_5_VLForConditionalGeneration,
+    RawImage
+  } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.6.0/dist/transformers.min.js';
 
-  let vlmPipeline = null;
+  const MODEL_ID = 'onnx-community/Qwen2.5-VL-0.5B-Instruct';
+
+  let processor = null;
+  let model = null;
   let isModelLoaded = false;
+
+  function progressCallback(prog) {
+    const bar = document.getElementById('progressBar');
+    const status = document.getElementById('modelStatus');
+    if (prog.status === 'progress' && prog.total) {
+      const pct = Math.round((prog.loaded / prog.total) * 100);
+      bar.style.width = pct + '%';
+      status.textContent = `다운로드 중: ${prog.file} (${pct}%)`;
+    } else if (prog.status === 'done') {
+      addLog(`완료: ${prog.file}`, 'ok');
+    } else if (prog.status === 'initiate') {
+      addLog(`시작: ${prog.file}`, '');
+    }
+  }
 
   window.loadModel = async function() {
     const btn = document.getElementById('loadModelBtn');
@@ -218,34 +239,28 @@
 
     btn.disabled = true;
     status.className = 'model-status status-loading';
-    status.textContent = '모델 로딩 중... (처음에는 ~500MB 다운로드)';
+    status.textContent = '모델 로딩 중... (처음에는 다운로드 소요)';
+    addLog('모델 로딩 시작: ' + MODEL_ID, 'ok');
 
-    addLog('모델 로딩 시작: onnx-community/Qwen3.5-0.8B-ONNX', 'ok');
+    const dtypeConfig = {
+      embed_tokens: 'fp16',
+      vision_encoder: 'fp16',
+      decoder_model_merged: 'q4',
+    };
 
     try {
-      vlmPipeline = await pipeline(
-        'image-text-to-text',
-        'onnx-community/Qwen3.5-0.8B-ONNX',
-        {
-          dtype: {
-            embed_tokens: 'q4',
-            vision_encoder: 'fp16',
-            decoder_model_merged: 'q4',
-          },
-          device: 'webgpu',
-          progress_callback: (prog) => {
-            if (prog.status === 'progress' && prog.total) {
-              const pct = Math.round((prog.loaded / prog.total) * 100);
-              bar.style.width = pct + '%';
-              status.textContent = `다운로드 중: ${prog.file} (${pct}%)`;
-            } else if (prog.status === 'done') {
-              addLog(`완료: ${prog.file}`, 'ok');
-            } else if (prog.status === 'initiate') {
-              addLog(`시작: ${prog.file}`, '');
-            }
-          }
-        }
-      );
+      addLog('Processor 로딩 중...', '');
+      processor = await AutoProcessor.from_pretrained(MODEL_ID, {
+        progress_callback: progressCallback,
+      });
+      addLog('Processor 로드 완료', 'ok');
+
+      addLog('Model 로딩 중 (WebGPU)...', '');
+      model = await Qwen2_5_VLForConditionalGeneration.from_pretrained(MODEL_ID, {
+        dtype: dtypeConfig,
+        device: 'webgpu',
+        progress_callback: progressCallback,
+      });
 
       isModelLoaded = true;
       status.className = 'model-status status-ready';
@@ -254,42 +269,33 @@
       document.getElementById('analyzeBtn').disabled = false;
       addLog('모델 준비 완료!', 'ok');
     } catch (err) {
-      status.className = 'model-status status-error';
-      status.textContent = '모델 로드 실패: ' + err.message;
-      addLog('오류: ' + err.message, 'err');
-      btn.disabled = false;
+      addLog('WebGPU 오류: ' + err.message, 'err');
+      addLog('WASM으로 재시도 중...', 'warn');
+      status.className = 'model-status status-loading';
+      status.textContent = 'WASM으로 재시도 중...';
 
-      // WebGPU 미지원 시 wasm fallback 시도
-      if (err.message.includes('WebGPU') || err.message.includes('webgpu')) {
-        addLog('WebGPU 미지원 → WASM으로 재시도...', 'warn');
-        status.textContent = 'WASM으로 재시도 중...';
-        status.className = 'model-status status-loading';
-        try {
-          vlmPipeline = await pipeline(
-            'image-text-to-text',
-            'onnx-community/Qwen3.5-0.8B-ONNX',
-            {
-              dtype: { embed_tokens: 'q4', vision_encoder: 'fp16', decoder_model_merged: 'q4' },
-              device: 'wasm',
-              progress_callback: (prog) => {
-                if (prog.status === 'progress' && prog.total) {
-                  bar.style.width = Math.round((prog.loaded / prog.total) * 100) + '%';
-                }
-              }
-            }
-          );
-          isModelLoaded = true;
-          status.className = 'model-status status-ready';
-          status.textContent = '모델 로드 완료 (WASM)';
-          document.getElementById('analyzeBtn').disabled = false;
-          addLog('WASM 모드로 모델 준비 완료', 'ok');
-        } catch (err2) {
-          status.className = 'model-status status-error';
-          status.textContent = '로드 실패: ' + err2.message;
-          addLog('WASM 오류: ' + err2.message, 'err');
-          btn.disabled = false;
+      try {
+        if (!processor) {
+          processor = await AutoProcessor.from_pretrained(MODEL_ID, {
+            progress_callback: progressCallback,
+          });
         }
-      } else {
+        model = await Qwen2_5_VLForConditionalGeneration.from_pretrained(MODEL_ID, {
+          dtype: dtypeConfig,
+          device: 'wasm',
+          progress_callback: progressCallback,
+        });
+
+        isModelLoaded = true;
+        status.className = 'model-status status-ready';
+        status.textContent = '모델 로드 완료 (WASM, 느림)';
+        bar.style.width = '100%';
+        document.getElementById('analyzeBtn').disabled = false;
+        addLog('WASM 모드로 준비 완료', 'ok');
+      } catch (err2) {
+        status.className = 'model-status status-error';
+        status.textContent = '로드 실패: ' + err2.message;
+        addLog('WASM 오류: ' + err2.message, 'err');
         btn.disabled = false;
       }
     }
@@ -386,15 +392,28 @@
     const startTime = Date.now();
 
     try {
-      const output = await vlmPipeline(messages, {
+      // 채팅 템플릿 적용 및 입력 전처리
+      const text = processor.apply_chat_template(messages, {
+        tokenize: false,
+        add_generation_prompt: true,
+      });
+      const inputs = await processor(text, [rawImage], { padding: true });
+
+      // 모델 추론
+      const outputIds = await model.generate({
+        ...inputs,
         max_new_tokens: maxTokens,
         do_sample: temperature > 0,
         temperature: temperature > 0 ? temperature : undefined,
       });
 
+      // 입력 토큰 제거 후 디코딩
+      const inputLen = inputs.input_ids.dims[1];
+      const trimmed = outputIds.slice(null, [inputLen, null]);
+      const decoded = processor.batch_decode(trimmed, { skip_special_tokens: true });
+
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      const text = output[0].generated_text.at(-1).content;
-      document.getElementById('analysisResult').textContent = text;
+      document.getElementById('analysisResult').textContent = decoded[0] || '(결과 없음)';
       addLog(`분석 완료! ${elapsed}초 소요`, 'ok');
     } catch (e) {
       document.getElementById('analysisResult').textContent = '분석 오류: ' + e.message;
