@@ -179,7 +179,7 @@
     <canvas id="captureCanvas"></canvas>
     <div style="margin-top:10px;">
       <button class="btn-danger" id="analyzeBtn" onclick="analyzeFrame()" disabled>화면 분석</button>
-      <span style="font-size:0.8rem;color:#888;margin-left:10px;">영상 일시정지 후 클릭</span>
+      <span id="analyzeHint" style="font-size:0.8rem;color:#888;margin-left:10px;">영상 일시정지 후 클릭</span>
     </div>
     <div id="log" style="margin-top:10px;"></div>
   </div>
@@ -414,6 +414,8 @@
         max_new_tokens: maxTokens,
         do_sample: temperature > 0,
         temperature: temperature > 0 ? temperature : undefined,
+        repetition_penalty: 1.5,
+        no_repeat_ngram_size: 3,
       });
 
       // 입력 토큰 제거 후 디코딩
