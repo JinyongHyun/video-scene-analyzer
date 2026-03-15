@@ -187,7 +187,7 @@
   <div class="card">
     <div class="section-title">분석 결과</div>
     <div class="section-title" style="font-size:0.85rem;color:#666;margin-bottom:6px;">분석 프롬프트</div>
-    <textarea class="prompt-box" id="promptBox">이 이미지를 자세히 분석해서 한국어로 설명해 주세요. 화면에 보이는 모든 요소, 텍스트, 사람, 물체, 배경, 분위기 등을 상세하게 묘사해 주세요.</textarea>
+    <textarea class="prompt-box" id="promptBox">Describe this image in detail. What do you see? Include people, objects, text, background, and overall atmosphere.</textarea>
     <div class="params-row">
       <label>Max Tokens</label>
       <input type="number" id="maxTokens" value="256" min="64" max="1024" />
@@ -221,7 +221,7 @@
     RawImage
   } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.6.0/dist/transformers.min.js';
 
-  const MODEL_ID = 'HuggingFaceTB/SmolVLM-256M-Instruct';
+  const MODEL_ID = 'HuggingFaceTB/SmolVLM-500M-Instruct';
 
   let processor = null;
   let model = null;
