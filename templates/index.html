@@ -205,14 +205,23 @@
   </div>
 </div>
 
+<script>
+  // 모듈 로드 실패 시 버튼이 반응하도록 fallback 정의
+  window.loadModel = function() {
+    document.getElementById('modelStatus').className = 'model-status status-loading';
+    document.getElementById('modelStatus').textContent = '스크립트 로딩 중... 잠시 후 다시 클릭하세요';
+  };
+  window.downloadVideo = function() {};
+  window.analyzeFrame = function() {};
+</script>
 <script type="module">
   import {
     AutoProcessor,
-    Qwen2_5_VLForConditionalGeneration,
+    Qwen2VLForConditionalGeneration,
     RawImage
   } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.6.0/dist/transformers.min.js';
 
-  const MODEL_ID = 'onnx-community/Qwen2.5-VL-0.5B-Instruct';
+  const MODEL_ID = 'onnx-community/Qwen2-VL-2B-Instruct';
 
   let processor = null;
   let model = null;
@@ -256,7 +265,7 @@
       addLog('Processor 로드 완료', 'ok');
 
       addLog('Model 로딩 중 (WebGPU)...', '');
-      model = await Qwen2_5_VLForConditionalGeneration.from_pretrained(MODEL_ID, {
+      model = await Qwen2VLForConditionalGeneration.from_pretrained(MODEL_ID, {
         dtype: dtypeConfig,
         device: 'webgpu',
         progress_callback: progressCallback,
@@ -280,7 +289,7 @@
             progress_callback: progressCallback,
           });
         }
-        model = await Qwen2_5_VLForConditionalGeneration.from_pretrained(MODEL_ID, {
+        model = await Qwen2VLForConditionalGeneration.from_pretrained(MODEL_ID, {
           dtype: dtypeConfig,
           device: 'wasm',
           progress_callback: progressCallback,
