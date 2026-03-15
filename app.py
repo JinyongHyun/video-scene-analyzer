@@ -30,10 +30,10 @@ def download_video():
     video_id = str(uuid.uuid4())[:8]
     output_path = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp4")
 
+    # ffmpeg 없이도 동작하도록 영상+오디오 합본 포맷만 선택
     cmd = get_ytdlp() + [
         url,
-        "-f", "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]/best[height<=720]",
-        "--merge-output-format", "mp4",
+        "-f", "18/best[vcodec!=none][acodec!=none][ext=mp4]/best[vcodec!=none][acodec!=none]",
         "-o", output_path,
         "--no-playlist",
     ]
@@ -41,8 +41,8 @@ def download_video():
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if result.returncode != 0:
-            # 간단한 fallback
-            cmd2 = get_ytdlp() + [url, "-f", "best[height<=480]/best", "-o", output_path, "--no-playlist"]
+            # fallback: 어떤 포맷이든 단일 파일로
+            cmd2 = get_ytdlp() + [url, "-f", "worst[vcodec!=none]/worst", "-o", output_path, "--no-playlist"]
             result2 = subprocess.run(cmd2, capture_output=True, text=True, timeout=300)
             if result2.returncode != 0:
                 return jsonify({"error": result2.stderr[-500:]}), 500
