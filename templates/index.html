@@ -190,7 +190,7 @@
     <textarea class="prompt-box" id="promptBox">이 이미지를 자세히 분석해서 한국어로 설명해 주세요. 화면에 보이는 모든 요소, 텍스트, 사람, 물체, 배경, 분위기 등을 상세하게 묘사해 주세요.</textarea>
     <div class="params-row">
       <label>Max Tokens</label>
-      <input type="number" id="maxTokens" value="512" min="64" max="2048" />
+      <input type="number" id="maxTokens" value="256" min="64" max="1024" />
       <label>Temperature</label>
       <input type="number" id="temperature" value="0" min="0" max="1" step="0.1" />
       <label>이미지 크기</label>
@@ -217,11 +217,11 @@
 <script type="module">
   import {
     AutoProcessor,
-    Qwen2VLForConditionalGeneration,
+    SmolVLMForConditionalGeneration,
     RawImage
   } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.6.0/dist/transformers.min.js';
 
-  const MODEL_ID = 'onnx-community/Qwen2-VL-2B-Instruct';
+  const MODEL_ID = 'HuggingFaceTB/SmolVLM-256M-Instruct';
 
   let processor = null;
   let model = null;
@@ -252,8 +252,8 @@
     addLog('모델 로딩 시작: ' + MODEL_ID, 'ok');
 
     const dtypeConfig = {
-      embed_tokens: 'fp16',
-      vision_encoder: 'fp16',
+      embed_tokens: 'q4',
+      vision_encoder: 'q4',
       decoder_model_merged: 'q4',
     };
 
@@ -265,7 +265,7 @@
       addLog('Processor 로드 완료', 'ok');
 
       addLog('Model 로딩 중 (WebGPU)...', '');
-      model = await Qwen2VLForConditionalGeneration.from_pretrained(MODEL_ID, {
+      model = await SmolVLMForConditionalGeneration.from_pretrained(MODEL_ID, {
         dtype: dtypeConfig,
         device: 'webgpu',
         progress_callback: progressCallback,
@@ -289,7 +289,7 @@
             progress_callback: progressCallback,
           });
         }
-        model = await Qwen2VLForConditionalGeneration.from_pretrained(MODEL_ID, {
+        model = await SmolVLMForConditionalGeneration.from_pretrained(MODEL_ID, {
           dtype: dtypeConfig,
           device: 'wasm',
           progress_callback: progressCallback,
